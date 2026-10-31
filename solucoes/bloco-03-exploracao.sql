@@ -19,27 +19,31 @@ SELECT MIN(inicio) AS primeira_recarga, MAX(inicio) AS ultima_recarga
 FROM recargas;
 
 -- Exercício 4
--- DISTINCT de cidade e uf nas estações. Atenção: o banco usa uma collation que
--- ignora maiúsculas/minúsculas e espaços no fim; veja quanto o DISTINCT "esconde".
+-- DISTINCT de cidade e uf nas estações. Atenção: o banco ignora maiúsculas/minúsculas
+-- e espaços no fim ao comparar; veja o que o DISTINCT "esconde".
 SELECT DISTINCT cidade, uf FROM estacoes ORDER BY cidade, uf;
 
 -- Exercício 5
--- Comparar o que o DISTINCT enxerga com o que realmente está gravado.
--- COLLATE Latin1_General_BIN compara byte a byte (sensível a caixa, acento e espaço).
-SELECT COUNT(DISTINCT cidade)                              AS cidades_pelo_distinct,
-       COUNT(DISTINCT cidade COLLATE Latin1_General_BIN)   AS cidades_gravadas,
-       COUNT(DISTINCT uf)                                  AS ufs_pelo_distinct,
-       COUNT(DISTINCT uf COLLATE Latin1_General_BIN)       AS ufs_gravadas
-FROM estacoes;
+-- O banco trata 'Curitiba' e 'CURITIBA' como iguais na comparação, mas o texto gravado é diferente.
+SELECT id_estacao, '[' + cidade + ']' AS cidade_gravada
+FROM estacoes
+WHERE cidade = N'curitiba';
+
+-- Espaço sobrando: no LIKE, o espaço do padrão conta (o = ignoraria o espaço no fim).
+SELECT id_estacao, '[' + cidade + ']' AS cidade_gravada
+FROM estacoes
+WHERE cidade LIKE N'% ' OR cidade LIKE N' %';
 
 -- Exercício 6
--- Status dos carregadores: quantas grafias existem e quantos de cada?
-SELECT status COLLATE Latin1_General_BIN AS status_gravado,
-       DATALENGTH(status) AS bytes,
-       COUNT(*) AS qtd
+-- Status dos carregadores: o GROUP BY enxerga quantos grupos?
+SELECT COUNT(*) AS grupos_de_status
+FROM (SELECT status FROM carregadores GROUP BY status) g;
+
+-- Quais têm espaço sobrando no começo ou no fim?
+SELECT id_carregador, '[' + status + ']' AS status_gravado
 FROM carregadores
-GROUP BY status COLLATE Latin1_General_BIN, DATALENGTH(status)
-ORDER BY status_gravado;
+WHERE status LIKE N'% ' OR status LIKE N' %'
+ORDER BY id_carregador;
 
 -- Exercício 7 (NULLs)
 -- NULLs: quais colunas têm NULL e quantos.

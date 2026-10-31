@@ -9,7 +9,7 @@
 --
 -- Rode depois do 01-criar-tabelas.sql. Pode rodar de novo: cada tabela
 -- é esvaziada antes de receber os dados.
--- Arquivo gerado por _interno/gerar_carga.py (não editar à mão).
+-- Arquivo gerado automaticamente (não editar à mão).
 -- =====================================================================
 
 -- ---------- estacoes ----------

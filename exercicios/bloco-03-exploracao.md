@@ -48,25 +48,25 @@ Soluções: [`solucoes/bloco-03-exploracao.sql`](../solucoes/bloco-03-exploracao
 
 **Confira:** **6 linhas**. Há 5 cidades de verdade (São Paulo, Campinas, Rio de Janeiro, Belo Horizonte, Curitiba). Qual aparece duas vezes e por quê?
 
-## Exercício 5 - O que o DISTINCT esconde
+## Exercício 5 - O que o banco trata como igual
 
-**O que fazer:** compare, numa linha, quantos valores distintos de `cidade` (e de `uf`) o `COUNT(DISTINCT ...)` normal enxerga com quantos existem de fato gravados.
+**O que fazer:** filtre `estacoes` com `WHERE cidade = N'curitiba'` (tudo minúsculo) e olhe o que volta, mostrando a cidade entre colchetes. Depois liste as estações cuja `cidade` tem espaço sobrando no começo ou no fim.
 
-**Por quê:** por padrão o SQL Server compara texto **sem diferenciar maiúscula de minúscula** e **ignora espaços no fim** (`'SP' = 'SP '` dá verdadeiro). Então `DISTINCT`, `=`, `IN` e `GROUP BY` "juntam" variações que estão gravadas de forma diferente. Para comparar byte a byte use a collation binária.
+**Por quê:** o banco compara texto **sem diferenciar maiúscula de minúscula** e **ignora espaços no fim** (`'SP' = 'SP '` dá verdadeiro). Ele trata `'São Paulo'` e `'são paulo'` como iguais **na comparação**, mas o texto gravado é diferente. Por isso `=`, `IN`, `DISTINCT` e `GROUP BY` "juntam" variações e não avisam. **A conferir no Azure:** o padrão do Azure SQL Database costuma ser o mesmo (`SQL_Latin1_General_CP1_CI_AS`); confirme com `SELECT DATABASEPROPERTYEX(DB_NAME(), 'Collation')`.
 
-**Dica:** `COUNT(DISTINCT cidade COLLATE Latin1_General_BIN)`.
+**Dica:** `'[' + cidade + ']'` deixa o espaço visível; `LIKE` com `%` e um espaço no padrão (no `LIKE`, o espaço do padrão conta).
 
-**Confira:** cidades: 6 pelo `DISTINCT` normal e **9** gravadas. UFs: 4 pelo `DISTINCT` normal e **6** gravadas.
+**Confira:** o filtro devolve **2 linhas**: `Curitiba` e `CURITIBA` (estações 9 e 10), apesar de a busca ser em minúsculas. Espaço sobrando em `cidade`: estações **3 e 8**.
 
 ## Exercício 6 - Status dos carregadores
 
-**O que fazer:** mostre cada grafia de `status` realmente gravada em `carregadores`, com quantos carregadores usam cada uma e o tamanho em bytes (`DATALENGTH`).
+**O que fazer:** conte quantos grupos o `GROUP BY status` em `carregadores` enxerga e liste, com colchetes, os carregadores cujo `status` tem espaço no começo ou no fim.
 
-**Por quê:** `DATALENGTH` conta os espaços no fim, que `LEN` ignora. É o jeito de enxergar espaço escondido.
+**Por quê:** só há 3 significados (disponível, em uso, manutenção), mas o texto gravado varia em acento, espaço e caixa. O `GROUP BY` não separa a diferença de caixa, então ele esconde parte da sujeira; vamos padronizar **todas** as linhas no bloco 05, sem depender de achar cada caso.
 
-**Dica:** `GROUP BY status COLLATE Latin1_General_BIN, DATALENGTH(status)`.
+**Dica:** agrupe por `status` e conte os grupos por fora (subconsulta); para o espaço, `LIKE` como no exercício anterior.
 
-**Confira:** **11 grafias** para só 3 significados (disponível, em uso, manutenção). A grafia mais comum é `Disponivel`, com 17 carregadores (20 bytes). Existem variações com espaço no começo ou no fim (22 bytes) e com acento.
+**Confira:** **6 grupos** para só 3 significados. Espaço sobrando em **3 carregadores**: ids **5, 12 e 25**.
 
 ## Exercício 7 - NULLs e valores impossíveis
 

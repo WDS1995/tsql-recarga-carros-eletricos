@@ -7,12 +7,9 @@
 
 -- Exercício 1
 -- Estações: cidade e uf padronizadas.
--- REPLACE tira o til para comparar 'sao paulo' e 'são paulo' do mesmo jeito.
--- Antes: grafias distintas (BIN diferencia maiúscula/minúscula e acento).
-SELECT COUNT(DISTINCT cidade COLLATE Latin1_General_BIN) AS cidades_antes,
-       COUNT(DISTINCT uf COLLATE Latin1_General_BIN)     AS ufs_antes
-FROM estacoes;
-
+-- O banco ignora caixa e espaço no fim ao comparar, então não dá para "detectar" cada grafia errada.
+-- A saída é reescrever TODAS as linhas com o valor canônico (rodar de novo não muda nada).
+-- REPLACE tira o til só para comparar 'sao paulo' e 'são paulo' do mesmo jeito.
 BEGIN TRAN;
 
 UPDATE estacoes
@@ -27,20 +24,20 @@ SET cidade = CASE LOWER(REPLACE(TRIM(cidade), N'ã', N'a'))
     uf = UPPER(TRIM(uf));
 
 DECLARE @p1 INT = (SELECT COUNT(*) FROM estacoes
-                   WHERE cidade COLLATE Latin1_General_BIN NOT IN (N'São Paulo', N'Campinas', N'Rio de Janeiro', N'Belo Horizonte', N'Curitiba')
-                      OR DATALENGTH(cidade) <> DATALENGTH(TRIM(cidade))
-                      OR uf COLLATE Latin1_General_BIN <> UPPER(TRIM(uf))
-                      OR DATALENGTH(uf) <> DATALENGTH(TRIM(uf)));
+                   WHERE cidade NOT IN (N'São Paulo', N'Campinas', N'Rio de Janeiro', N'Belo Horizonte', N'Curitiba')
+                      OR cidade LIKE N'% ' OR cidade LIKE N' %'
+                      OR uf LIKE N'% '     OR uf LIKE N' %');
 IF @p1 = 0 COMMIT TRAN ELSE ROLLBACK TRAN;
 SELECT @p1 AS problemas_restantes, @@TRANCOUNT AS transacoes_abertas;
--- Depois: grafias distintas
-SELECT COUNT(DISTINCT cidade COLLATE Latin1_General_BIN) AS cidades_depois,
-       COUNT(DISTINCT uf COLLATE Latin1_General_BIN)     AS ufs_depois
-FROM estacoes;
+-- Depois: como todas as linhas foram reescritas, cada grupo mostra a grafia correta.
+SELECT cidade, uf, COUNT(*) AS qtd
+FROM estacoes
+GROUP BY cidade, uf
+ORDER BY cidade, uf;
 
 -- Exercício 2
--- Carregadores: status em três valores padrão. A potência NULL NÃO é inventada:
--- não sabemos o valor, então continua NULL.
+-- Carregadores: status em três valores padrão (todas as linhas reescritas). A potência NULL
+-- NÃO é inventada: não sabemos o valor, então continua NULL.
 BEGIN TRAN;
 
 UPDATE carregadores
@@ -52,13 +49,13 @@ SET status = CASE
              END;
 
 DECLARE @p2 INT = (SELECT COUNT(*) FROM carregadores
-                   WHERE status COLLATE Latin1_General_BIN NOT IN (N'Disponivel', N'Em uso', N'Manutencao')
-                      OR DATALENGTH(status) <> DATALENGTH(TRIM(status)));
+                   WHERE status NOT IN (N'Disponivel', N'Em uso', N'Manutencao')
+                      OR status LIKE N'% ' OR status LIKE N' %');
 IF @p2 = 0 COMMIT TRAN ELSE ROLLBACK TRAN;
--- COLLATE BIN no GROUP BY: sem ele o banco junta 'Disponivel' e 'disponivel' no mesmo grupo.
-SELECT status COLLATE Latin1_General_BIN AS status, COUNT(*) AS qtd
+SELECT @p2 AS problemas_restantes, @@TRANCOUNT AS transacoes_abertas;
+SELECT status, COUNT(*) AS qtd
 FROM carregadores
-GROUP BY status COLLATE Latin1_General_BIN
+GROUP BY status
 ORDER BY status;
 -- As potências NULL continuam NULL:
 SELECT COUNT(*) AS potencias_nulas FROM carregadores WHERE potencia_kw IS NULL;
@@ -72,9 +69,8 @@ SET nome  = REPLACE(TRIM(nome), N'  ', N' '),
     email = LOWER(TRIM(email));
 
 DECLARE @p3 INT = (SELECT COUNT(*) FROM motoristas
-                   WHERE DATALENGTH(nome) <> DATALENGTH(TRIM(nome))
-                      OR nome LIKE N'%  %'
-                      OR email COLLATE Latin1_General_BIN <> LOWER(TRIM(email)));
+                   WHERE nome LIKE N'% ' OR nome LIKE N' %' OR nome LIKE N'%  %'
+                      OR email LIKE N'% ' OR email LIKE N' %');
 IF @p3 = 0 COMMIT TRAN ELSE ROLLBACK TRAN;
 SELECT @p3 AS problemas_restantes, @@TRANCOUNT AS transacoes_abertas;
 
@@ -95,22 +91,26 @@ SELECT COUNT(*) AS veiculos_sem_bateria_informada FROM veiculos WHERE bateria_kw
 -- Exercício 5
 -- Deduplicar motoristas: mantém o MENOR id de cada e-mail.
 -- Ordem importa: 1) reapontar os veículos; 2) só então apagar os duplicados.
+-- A subconsulta acha, por e-mail, o id que fica; HAVING COUNT(*) > 1 deixa só os e-mails repetidos.
 BEGIN TRAN;
 
 UPDATE v
 SET v.id_motorista = k.id_manter
 FROM veiculos v
-INNER JOIN (SELECT id_motorista,
-                   MIN(id_motorista) OVER (PARTITION BY LOWER(TRIM(email))) AS id_manter
-            FROM motoristas) k ON k.id_motorista = v.id_motorista
-WHERE k.id_motorista <> k.id_manter;
+INNER JOIN motoristas m ON m.id_motorista = v.id_motorista
+INNER JOIN (SELECT LOWER(TRIM(email)) AS email, MIN(id_motorista) AS id_manter
+            FROM motoristas
+            GROUP BY LOWER(TRIM(email))
+            HAVING COUNT(*) > 1) k ON k.email = LOWER(TRIM(m.email))
+WHERE v.id_motorista <> k.id_manter;
 
-DELETE FROM motoristas
-WHERE id_motorista IN (SELECT id_motorista
-                       FROM (SELECT id_motorista,
-                                    MIN(id_motorista) OVER (PARTITION BY LOWER(TRIM(email))) AS id_manter
-                             FROM motoristas) k
-                       WHERE id_motorista <> id_manter);
+DELETE m
+FROM motoristas m
+INNER JOIN (SELECT LOWER(TRIM(email)) AS email, MIN(id_motorista) AS id_manter
+            FROM motoristas
+            GROUP BY LOWER(TRIM(email))
+            HAVING COUNT(*) > 1) k ON k.email = LOWER(TRIM(m.email))
+WHERE m.id_motorista <> k.id_manter;
 
 DECLARE @p5 INT = (SELECT COUNT(*) FROM veiculos v
                    LEFT JOIN motoristas m ON m.id_motorista = v.id_motorista
@@ -122,22 +122,21 @@ SELECT (SELECT COUNT(*) FROM motoristas) AS motoristas,
 
 -- Exercício 6
 -- Deduplicar recargas: linhas idênticas em todas as colunas, menos o id.
--- Guarda a de menor id e apaga as cópias.
+-- Guarda a de menor id de cada grupo e apaga as cópias. (GROUP BY trata NULL como igual a NULL;
+-- por isso usamos NOT IN com o MIN(id) em vez de um JOIN por igualdade.)
 BEGIN TRAN;
 
-WITH d AS (
-    SELECT ROW_NUMBER() OVER (PARTITION BY id_veiculo, id_carregador, inicio, fim,
-                                           energia_kwh, preco_kwh_aplicado, valor_total
-                              ORDER BY id_recarga) AS rn
-    FROM recargas
-)
-DELETE FROM d WHERE rn > 1;
+DELETE FROM recargas
+WHERE id_recarga NOT IN (SELECT MIN(id_recarga)
+                         FROM recargas
+                         GROUP BY id_veiculo, id_carregador, inicio, fim,
+                                  energia_kwh, preco_kwh_aplicado, valor_total);
 
-DECLARE @p6 INT = (SELECT COUNT(*) FROM (
-                       SELECT ROW_NUMBER() OVER (PARTITION BY id_veiculo, id_carregador, inicio, fim,
-                                                              energia_kwh, preco_kwh_aplicado, valor_total
-                                                 ORDER BY id_recarga) AS rn
-                       FROM recargas) x WHERE rn > 1);
+DECLARE @p6 INT = (SELECT COUNT(*) FROM recargas)
+                - (SELECT COUNT(*) FROM (SELECT 1 AS x
+                                         FROM recargas
+                                         GROUP BY id_veiculo, id_carregador, inicio, fim,
+                                                  energia_kwh, preco_kwh_aplicado, valor_total) g);
 IF @p6 = 0 COMMIT TRAN ELSE ROLLBACK TRAN;
 SELECT COUNT(*) AS recargas FROM recargas;
 

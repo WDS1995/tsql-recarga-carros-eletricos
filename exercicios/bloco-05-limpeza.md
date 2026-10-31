@@ -9,7 +9,7 @@ Objetivo: corrigir a sujeira que você achou nos blocos 03 e 04, **com seguranç
 1. **Cada correção vai dentro de uma transação:** `BEGIN TRAN` -> alteração -> **conferência** -> `COMMIT` (ou `ROLLBACK` se a conferência não bater). Assim, um erro seu não estraga a base.
 2. **Rode a transação inteira em uma única execução** (do `BEGIN TRAN` até o `COMMIT`/`ROLLBACK`). **A conferir no Azure:** se o Query editor mantém a transação aberta entre execuções separadas; para não depender disso, não separe.
 3. Treino seguro: na primeira vez, termine com `ROLLBACK` só para ver a conferência. Quando bater, troque por `COMMIT` e rode de novo.
-4. **Atenção ao SQL Server:** `=` e `IN` **ignoram espaços no fim** e, por padrão, **maiúscula/minúscula**. Para provar que um texto está limpo, compare com `COLLATE Latin1_General_BIN` e use `DATALENGTH(x) <> DATALENGTH(TRIM(x))` para achar espaços.
+4. **Atenção ao SQL Server:** `=` e `IN` **ignoram espaços no fim** e **maiúscula/minúscula** (bloco 03). Por isso não dá para "detectar" cada grafia errada: a regra é **padronizar todas as linhas** (o `UPDATE` reescreve cada valor para a forma correta, e rodar de novo não muda nada). Para espaço sobrando, use `LIKE` com um espaço no começo ou no fim do padrão.
 5. Se algo der errado, `01` e `02` recriam a base do zero.
 
 Soluções: [`solucoes/bloco-05-limpeza.sql`](../solucoes/bloco-05-limpeza.sql).
@@ -22,7 +22,7 @@ Soluções: [`solucoes/bloco-05-limpeza.sql`](../solucoes/bloco-05-limpeza.sql).
 
 **Dica:** `TRIM`, `UPPER`, `LOWER`; para `sao paulo` sem til, `REPLACE(texto, N'ã', N'a')` ajuda a comparar; `CASE` devolve a grafia correta.
 
-**Confira:** `UPDATE` afeta **10** linhas. Depois, a conferência (cidade fora das 5 grafias, ou com espaço sobrando, ou uf fora do padrão) devolve **0**. O `COUNT(DISTINCT cidade COLLATE Latin1_General_BIN)` passa de 9 para **5**, e o de `uf` de 6 para **4**.
+**Confira:** `UPDATE` afeta **10** linhas (ele reescreve todas). Depois, a conferência (cidade fora das 5 cidades, ou com espaço sobrando, ou uf com espaço) devolve **0**. Agrupando por `cidade, uf` aparecem **5 linhas**, todas com a grafia correta: São Paulo/SP 3, Campinas/SP 1, Rio de Janeiro/RJ 2, Belo Horizonte/MG 2, Curitiba/PR 2.
 
 ## Exercício 2 - Padronizar o `status` dos carregadores
 
@@ -32,7 +32,7 @@ Soluções: [`solucoes/bloco-05-limpeza.sql`](../solucoes/bloco-05-limpeza.sql).
 
 **Dica:** `CASE` com `LOWER(TRIM(status))` e `LIKE` com o começo da palavra (cuidado: `disponível` tem acento no `i`, então o começo comum é `dispon`).
 
-**Confira:** a conferência devolve 0 problemas. Ao agrupar por status com `COLLATE Latin1_General_BIN`: `Disponivel` 21, `Em uso` 6, `Manutencao` 3 (total 30). As 4 potências NULL continuam NULL.
+**Confira:** a conferência devolve 0 problemas. Ao agrupar por status: `Disponivel` 21, `Em uso` 6, `Manutencao` 3 (total 30). As 4 potências NULL continuam NULL.
 
 ## Exercício 3 - Nome e e-mail dos motoristas
 
@@ -40,9 +40,9 @@ Soluções: [`solucoes/bloco-05-limpeza.sql`](../solucoes/bloco-05-limpeza.sql).
 
 **Por quê:** nome e e-mail são chaves naturais de busca e de deduplicação.
 
-**Dica:** `TRIM`, `LOWER`, `REPLACE(nome, N'  ', N' ')`.
+**Dica:** `TRIM`, `LOWER`, `REPLACE(nome, N'  ', N' ')`. Padronize todas as linhas, sem tentar detectar quais estão erradas.
 
-**Confira:** `UPDATE` afeta **80** linhas (o `UPDATE` toca todas; o que importa é o resultado). Conferência: 0 nomes com espaço sobrando e 0 e-mails com maiúscula.
+**Confira:** `UPDATE` afeta **80** linhas (o `UPDATE` toca todas; o que importa é o resultado). Conferência: 0 nomes com espaço sobrando (começo, fim ou duplo) e 0 e-mails com espaço sobrando.
 
 ## Exercício 4 - Placa e bateria dos veículos
 
@@ -60,7 +60,7 @@ Soluções: [`solucoes/bloco-05-limpeza.sql`](../solucoes/bloco-05-limpeza.sql).
 
 **Por quê:** se apagar antes, os veículos ficam sem dono. A ordem importa. Isto é o que uma `FOREIGN KEY` obrigaria a fazer.
 
-**Dica:** estratégia em passos: (1) para cada e-mail, escolher o id que fica; (2) reapontar os veículos dos outros ids para ele; (3) apagar o excedente. Faça o exercício 3 antes (e-mail já em minúsculas).
+**Dica:** estratégia em passos: (1) para cada e-mail, escolher o id que fica (`MIN` com `GROUP BY`; `HAVING COUNT(*) > 1` separa os e-mails repetidos); (2) reapontar os veículos dos outros ids para ele (`UPDATE` com `JOIN`); (3) apagar o excedente. Faça o exercício 3 antes (e-mail já em minúsculas).
 
 **Confira:** o reapontamento afeta **3** veículos e o `DELETE` afeta **3** motoristas. Resultado: `motoristas` = **77**, `veiculos` = **90** (nenhum apagado) e **0** veículos sem dono.
 
@@ -70,7 +70,7 @@ Soluções: [`solucoes/bloco-05-limpeza.sql`](../solucoes/bloco-05-limpeza.sql).
 
 **Por quê:** recarga duplicada conta o faturamento em dobro.
 
-**Dica:** `ROW_NUMBER() OVER (PARTITION BY <todas as colunas menos o id> ORDER BY id_recarga)` dentro de uma CTE; apague onde o número é maior que 1.
+**Dica:** agrupe por todas as colunas menos o id e pegue o `MIN(id_recarga)` de cada grupo (o `GROUP BY` trata NULL como igual a NULL); apague as linhas cujo id não está nessa lista.
 
 **Confira:** o `DELETE` afeta **15** linhas. Depois `COUNT(*)` de `recargas` = **985**.
 

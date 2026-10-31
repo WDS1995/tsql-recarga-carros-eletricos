@@ -125,9 +125,9 @@ SELECT id_carregador, status_anterior, status_novo FROM historico_status ORDER B
 
 -- Volta os carregadores ao estado normal (voltar para Disponivel não grava no histórico).
 UPDATE carregadores SET status = N'Disponivel' WHERE id_carregador IN (1, 2, 3, 4, 5);
-SELECT status COLLATE Latin1_General_BIN AS status, COUNT(*) AS qtd
+SELECT status, COUNT(*) AS qtd
 FROM carregadores
-GROUP BY status COLLATE Latin1_General_BIN
+GROUP BY status
 ORDER BY status;
 
 -- Exercício 7
